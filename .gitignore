@@ -1,0 +1,11 @@
+# dist folder
+dist
+
+# executable.
+ws_server.exe
+
+#node_modules
+node_modules
+
+# config
+config
