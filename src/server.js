@@ -1,22 +1,35 @@
 import * as fs from "fs";
 import path from "path";
 import express from "express";
+import cors from "cors";
 
 import { createServer } from "http";
 import { Server } from "socket.io";
 import EVENTS from "./constants/events.js";
 
-const { CONNECTION, DISCONNECT, RESTART_SERVER, SHUT_DOWN } = EVENTS;
+const {
+  CONNECTION,
+  DISCONNECT,
+  FROM_TPV,
+  REGISTER_CLIENT,
+  RESTART_SERVER,
+  SHUT_DOWN,
+} = EVENTS;
 
 class WsSocketServer {
   constructor() {
     this.port = 8080;
     this.app = express();
-    this.server = createServer(this.app);
-    this.io = new Server(this.server);
+    this.server = createServer(this.app.use(cors()));
+    this.io = new Server(this.server, {
+      cors: {
+        origin: "*",
+      },
+    });
     this.folderPath = "./config";
     this.initFileName = "init.json";
     this.fullInitPath = path.join(this.folderPath, this.initFileName);
+    // this.whiteList = ["http://localhost:3000"];
   }
 
   /**
@@ -59,9 +72,8 @@ class WsSocketServer {
     this.io.on(CONNECTION, (socket) => {
       this.clientConnected();
       const events = Object.values(EVENTS);
-      console.log({ events });
       events.forEach((event) => {
-        socket.on(event, () => this.customSocketEvent(event, socket));
+        socket.on(event, (data) => this.customSocketEvent(event, socket, data));
       });
     });
 
@@ -99,8 +111,19 @@ class WsSocketServer {
     console.log("A client has been disconnected");
   }
 
-  customSocketEvent(eventType, socket) {
-    console.log({ eventType });
+  register(socket, room) {
+    socket.join(room);
+    console.log(`Client registered in room ${room}`);
+  }
+
+  fromTPV(socket, data) {
+    const payload = JSON.parse(data);
+    const { room, addresseeEvent } = payload;
+
+    socket.to(room).emit(addresseeEvent, data);
+  }
+
+  customSocketEvent(eventType, socket, data) {
     switch (eventType) {
       case CONNECTION:
         return this.clientConnected();
@@ -110,10 +133,17 @@ class WsSocketServer {
         return this.shutdown(socket);
       case RESTART_SERVER:
         return this.restartServer(socket);
+      case FROM_TPV:
+        return this.fromTPV(socket, data);
+      case REGISTER_CLIENT:
+        return this.register(socket, data);
       default:
         break;
     }
   }
+
+  // allowCorsOrigins() {
+  // }
 }
 
 export default WsSocketServer;
