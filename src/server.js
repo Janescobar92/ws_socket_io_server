@@ -118,9 +118,9 @@ class WsSocketServer {
 
   fromTPV(socket, data) {
     const payload = JSON.parse(data);
-    const { room, addresseeEvent } = payload;
+    const { room, roomEvent } = payload;
 
-    socket.to(room).emit(addresseeEvent, data);
+    socket.to(room).emit(roomEvent, data);
   }
 
   customSocketEvent(eventType, socket, data) {
