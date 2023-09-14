@@ -119,6 +119,7 @@ class WsSocketServer {
   emitRoomEvent(socket, data) {
     const payload = JSON.parse(data);
     const { room, roomEvent } = payload;
+    console.log({ payload });
     socket.to(room).emit(roomEvent, data);
   }
 
