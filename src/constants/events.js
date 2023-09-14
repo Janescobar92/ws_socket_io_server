@@ -2,7 +2,7 @@ const EVENTS = {
   CONNECT: "connect",
   CONNECTION: "connection",
   DISCONNECT: "disconnect",
-  FROM_TPV: "from_tpv",
+  TO_ROOM_EVENT: "to_room_event",
   REGISTER_CLIENT: "register_client_in_room",
   RESTART_SERVER: "restart_server",
   RESTART_CLIENT_CONNECTION: "restart_client_connection",

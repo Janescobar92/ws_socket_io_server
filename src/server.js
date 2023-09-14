@@ -10,7 +10,7 @@ import EVENTS from "./constants/events.js";
 const {
   CONNECTION,
   DISCONNECT,
-  FROM_TPV,
+  TO_ROOM_EVENT,
   REGISTER_CLIENT,
   RESTART_SERVER,
   SHUT_DOWN,
@@ -116,10 +116,9 @@ class WsSocketServer {
     console.log(`Client registered in room ${room}`);
   }
 
-  fromTPV(socket, data) {
+  emitRoomEvent(socket, data) {
     const payload = JSON.parse(data);
     const { room, roomEvent } = payload;
-
     socket.to(room).emit(roomEvent, data);
   }
 
@@ -133,8 +132,8 @@ class WsSocketServer {
         return this.shutdown(socket);
       case RESTART_SERVER:
         return this.restartServer(socket);
-      case FROM_TPV:
-        return this.fromTPV(socket, data);
+      case TO_ROOM_EVENT:
+        return this.emitRoomEvent(socket, data);
       case REGISTER_CLIENT:
         return this.register(socket, data);
       default:
