@@ -6,6 +6,8 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import EVENTS from "./constants/events.js";
+import ROOMS from "./constants/rooms.js";
+import { SS_CONNECTED, SS_DISCONNECTED } from "./constants/message.js";
 
 const {
   CONNECTION,
@@ -13,8 +15,11 @@ const {
   TO_ROOM_EVENT,
   REGISTER_CLIENT,
   RESTART_SERVER,
+  SENT_FROM_SERVER,
   SHUT_DOWN,
 } = EVENTS;
+
+const { SECOND_SCREEN, TPV } = ROOMS;
 
 class WsSocketServer {
   constructor() {
@@ -29,6 +34,7 @@ class WsSocketServer {
     this.folderPath = "./config";
     this.initFileName = "init.json";
     this.fullInitPath = path.join(this.folderPath, this.initFileName);
+    this.connectedClients = [];
     // this.whiteList = ["http://localhost:3000"];
   }
 
@@ -80,6 +86,7 @@ class WsSocketServer {
     this.readInitFile();
     this.server.listen(this.port, () => {
       console.log(`Listening on ${this.port}`);
+      this.checkConnectedClients();
     });
   }
 
@@ -107,13 +114,17 @@ class WsSocketServer {
     console.log("A client has connected");
   }
 
-  clientDisconnected() {
+  clientDisconnected(socket) {
     console.log("A client has been disconnected");
+    this.connectedClients = this.connectedClients.filter(
+      (s) => s.socket_id !== socket.id
+    );
   }
 
   register(socket, room) {
     socket.join(room);
     console.log(`Client registered in room ${room}`);
+    this.connectedClients.push({ socket_id: socket.id, room });
   }
 
   emitRoomEvent(socket, data) {
@@ -128,7 +139,7 @@ class WsSocketServer {
       case CONNECTION:
         return this.clientConnected();
       case DISCONNECT:
-        return this.clientDisconnected();
+        return this.clientDisconnected(socket);
       case SHUT_DOWN:
         return this.shutdown(socket);
       case RESTART_SERVER:
@@ -142,6 +153,34 @@ class WsSocketServer {
     }
   }
 
+  areThereClientsInRoom(room) {
+    return this.connectedClients.some((client) => client.room === room);
+  }
+
+  healthCheck() {
+    if (!this.connectedClients.length) return;
+    const isTPVOnline = this.areThereClientsInRoom(TPV);
+    const isSScreenOnline = this.areThereClientsInRoom(SECOND_SCREEN);
+
+    if (isTPVOnline) {
+      this.io.to(TPV).emit(
+        SENT_FROM_SERVER,
+        JSON.stringify({
+          messague: isSScreenOnline ? SS_CONNECTED : SS_DISCONNECTED,
+          ss_connected: isSScreenOnline,
+        })
+      );
+    }
+  }
+
+  checkConnectedClients() {
+    setInterval(() => {
+      console.log({
+        connectedClients: this.connectedClients,
+      });
+      this.healthCheck();
+    }, 10000);
+  }
   // allowCorsOrigins() {
   // }
 }
