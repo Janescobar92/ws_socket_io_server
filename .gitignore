@@ -2,6 +2,7 @@
 dist
 
 # executable.
+build
 ws_server.exe
 
 #node_modules
