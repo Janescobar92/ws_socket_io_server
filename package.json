@@ -7,7 +7,9 @@
     "type": "module",
     "scripts": {
         "start": "node ./src/app.js",
-        "build": "babel src --out-dir dist && pkg . --target node18-win-x64 --output ws_server.exe --public"
+        "build": "babel src --out-dir dist && pkg . --target node18-win-x64 --output build/ws_server.exe --public",
+        "build_on_linux": "rm -f build/ws_server.exe && npm run build",
+        "build_on_win": "cd build && del /F ws_server.exe && npm run build"
     },
     "pkg": {
         "engines": {
