@@ -162,8 +162,13 @@ class WsSocketServer {
     const isTPVOnline = this.areThereClientsInRoom(TPV);
     const isSScreenOnline = this.areThereClientsInRoom(SECOND_SCREEN);
 
-    if (isTPVOnline) {
-      this.io.to(TPV).emit(
+    const emitTo = [
+      ...(isTPVOnline ? [TPV] : []),
+      ...(isSScreenOnline ? [SECOND_SCREEN] : []),
+    ];
+
+    if (!!emitTo.length) {
+      this.io.to(emitTo).emit(
         SENT_FROM_SERVER,
         JSON.stringify({
           messague: isSScreenOnline ? SS_CONNECTED : SS_DISCONNECTED,
