@@ -16,7 +16,8 @@
             "node": "18.x"
         },
         "assets": [
-            "**/*"
+            "**/*",
+            "**/certificates/*"
         ],
         "scripts": [
             "*.js"

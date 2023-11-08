@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'https';
@@ -21,8 +22,11 @@ const {
 
 const { SECOND_SCREEN, TPV } = ROOMS;
 
-const keyPath = 'key.pem';
-const certPath = 'cert.pem'; 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const keyPath = path.join(__dirname, '..', 'certificates', 'key.pem');
+const certPath = path.join(__dirname, '..', 'certificates', 'cert.pem');
+
 
 const options = {
   key: fs.readFileSync(keyPath),
