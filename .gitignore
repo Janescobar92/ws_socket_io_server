@@ -10,3 +10,7 @@ node_modules
 
 # config
 config
+
+cert.pem
+key.pem
+csr.pem

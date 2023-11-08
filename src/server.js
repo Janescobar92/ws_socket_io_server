@@ -1,10 +1,10 @@
-import * as fs from "fs";
-import path from "path";
-import express from "express";
-import cors from "cors";
+import * as fs from 'fs';
+import path from 'path';
+import express from 'express';
+import cors from 'cors';
+import { createServer } from 'https';
+import { Server } from 'socket.io';
 
-import { createServer } from "http";
-import { Server } from "socket.io";
 import EVENTS from "./constants/events.js";
 import ROOMS from "./constants/rooms.js";
 import { SS_CONNECTED, SS_DISCONNECTED } from "./constants/message.js";
@@ -21,11 +21,20 @@ const {
 
 const { SECOND_SCREEN, TPV } = ROOMS;
 
+const keyPath = 'key.pem';
+const certPath = 'cert.pem'; 
+
+const options = {
+  key: fs.readFileSync(keyPath),
+  cert: fs.readFileSync(certPath),
+  rejectUnauthorized: false,
+};
+
 class WsSocketServer {
   constructor() {
     this.port = 8080;
     this.app = express();
-    this.server = createServer(this.app.use(cors()));
+    this.server = createServer(options, this.app.use(cors()));
     this.io = new Server(this.server, {
       cors: {
         origin: "*",
@@ -130,7 +139,7 @@ class WsSocketServer {
   emitRoomEvent(socket, data) {
     const payload = JSON.parse(data);
     const { room, roomEvent } = payload;
-    console.log({ payload });
+    console.log({ room, roomEvent, data });
     socket.to(room).emit(roomEvent, data);
   }
 
