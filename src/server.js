@@ -1,15 +1,18 @@
 import * as fs from "fs";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import cors from "cors";
-import { createServer } from "node:https";
+import { createServer as createHttpsServer } from "node:https";
+import { createServer as createHttpServer } from "node:http";
 import { Server } from "socket.io";
 
 import EVENTS from "./constants/events.js";
 import ROOMS from "./constants/rooms.js";
 import { SS_CONNECTED, SS_DISCONNECTED } from "./constants/message.js";
 
+// Destructuring to extract constants from the imported EVENTS and ROOMS objects.
 const {
   CONNECTION,
   DISCONNECT,
@@ -22,13 +25,17 @@ const {
 
 const { SECOND_SCREEN, TPV } = ROOMS;
 
+// Determine the directory name of the current module.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Paths to SSL certificate and key files for HTTPS server.
 const keyPath = path.join(__dirname, "..", "certificates", "key.pem");
 const certPath = path.join(__dirname, "..", "certificates", "cert.pem");
 
+// Path to the public directory for serving static files.
 const publicPath = path.join(__dirname, "..", "public");
 
+// SSL options for HTTPS server setup.
 const options = {
   key: fs.readFileSync(keyPath),
   cert: fs.readFileSync(certPath),
@@ -37,62 +44,59 @@ const options = {
 
 class WsSocketServer {
   constructor() {
-    this.port = 8080;
+    // Ports for HTTP and HTTPS servers.
+    this.httpPort = 3001;
+    this.httpsPort = 3002;
+
+    // Express application setup with CORS and static file middleware.
     this.app = express();
-    this.server = createServer(
-      options,
-      this.app.use(cors(), express.static(publicPath))
-    );
-    this.io = new Server(this.server, {
+    this.app.use(cors(), express.static(publicPath));
+
+    // Creating HTTP and HTTPS servers.
+    this.httpServer = createHttpServer(this.app);
+    this.httpsServer = createHttpsServer(options, this.app);
+
+    // Socket.IO setup with CORS configuration.
+    this.io = new Server({
       cors: {
         origin: "*",
       },
-      // rejectUnauthorized: false,
     });
+
+    // Attach Socket.IO to both HTTP and HTTPS servers.
+    this.io.attach(this.httpServer);
+    this.io.attach(this.httpsServer);
+
+    // Configuration paths for server initialization.
     this.folderPath = "./config";
     this.initFileName = "init.json";
     this.fullInitPath = path.join(this.folderPath, this.initFileName);
+
+    // List to keep track of connected clients.
     this.connectedClients = [];
-    // this.whiteList = ["http://localhost:3000"];
   }
 
   /**
-   * Reads init file from init.json and sets the init port.
+   * Retrieves the network IP address of the server.
+   * @returns {string} The IP address.
    */
-  readInitFile() {
-    try {
-      const fileData = fs.readFileSync(this.fullInitPath, "utf-8");
-      const parsedData = JSON.parse(fileData);
-      if (!parsedData?.port) {
-        this.writeInitFile();
-      } else {
-        this.port = parsedData?.port;
+  getNetworkIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === "IPv4" && !iface.internal) {
+          return iface.address;
+        }
       }
-    } catch (error) {
-      this.writeInitFile();
-      console.log({ error });
     }
+    return "0.0.0.0";
   }
 
   /**
-   * Writes init file.
-   */
-  writeInitFile() {
-    try {
-      fs.mkdirSync(this.folderPath, { recursive: true });
-      fs.writeFileSync(
-        this.fullInitPath,
-        JSON.stringify({ port: this.port }, null, 2)
-      );
-    } catch (error) {
-      console.log(error);
-    }
-  }
-
-  /**
-   * Starts server
+   * Starts the WebSocket server and listens on specified HTTP and HTTPS ports.
    */
   start() {
+    // Setup for Socket.IO connection handling.
     this.io.on(CONNECTION, (socket) => {
       this.clientConnected();
       const events = Object.values(EVENTS);
@@ -101,20 +105,41 @@ class WsSocketServer {
       });
     });
 
-    this.readInitFile();
-    this.server.listen(this.port, (a) => {
-      console.log(`Listening on ${this.port}`);
+    // Start listening on HTTP and HTTPS ports.
+    this.httpServer.listen(this.httpPort, () => {
+      console.log(`HTTP Server listening on http://localhost:${this.httpPort}`);
       this.checkConnectedClients();
     });
+
+    this.httpsServer.listen(this.httpsPort, () => {
+      console.log(
+        `HTTPS Server listening on https://${this.getNetworkIP()}:${
+          this.httpsPort
+        }`
+      );
+      this.checkConnectedClients();
+    });
+
+    // Enable additional endpoints.
     this.enableEndpoints();
   }
 
   /**
-   * Shut down server.
+   * Method to handle server shutdown.
+   * @param {Socket} socket - The socket instance.
+   * @param {boolean} restart - Flag to restart the server after shutdown.
    */
   async shutdown(socket, restart = false) {
     console.log("Shutting down server...");
-    this.server.close(() => {
+    this.httpServer.close(() => {
+      console.log("WsSocketServer successfully shut down");
+      if (restart) {
+        this.start();
+      } else {
+        process.exit(0);
+      }
+    });
+    this.httpsServer.close(() => {
       console.log("WsSocketServer successfully shut down");
       if (restart) {
         this.start();
@@ -125,14 +150,25 @@ class WsSocketServer {
     await socket.disconnect();
   }
 
+  /**
+   * Restart the server.
+   * @param {Socket} socket - The socket instance.
+   */
   async restartServer(socket) {
     await this.shutdown(socket, true);
   }
 
+  /**
+   * Logs when a client connects.
+   */
   clientConnected() {
     console.log("A client has connected");
   }
 
+  /**
+   * Handles client disconnection.
+   * @param {Socket} socket - The socket instance of the disconnected client.
+   */
   clientDisconnected(socket) {
     console.log("A client has been disconnected");
     this.connectedClients = this.connectedClients.filter(
@@ -140,12 +176,22 @@ class WsSocketServer {
     );
   }
 
+  /**
+   * Register a client to a specific room.
+   * @param {Socket} socket - The socket instance of the client.
+   * @param {string} room - The room to join.
+   */
   register(socket, room) {
     socket.join(room);
     console.log(`Client registered in room ${room}`);
     this.connectedClients.push({ socket_id: socket.id, room });
   }
 
+  /**
+   * Emit events to a specific room.
+   * @param {Socket} socket - The socket instance.
+   * @param {string} data - Data to be emitted.
+   */
   emitRoomEvent(socket, data) {
     const payload = JSON.parse(data);
     const { room, roomEvent } = payload;
@@ -153,6 +199,12 @@ class WsSocketServer {
     socket.to(room).emit(roomEvent, data);
   }
 
+  /**
+   * Custom event handling for Socket.IO.
+   * @param {string} eventType - The type of the event.
+   * @param {Socket} socket - The socket instance.
+   * @param {string} data - Data associated with the event.
+   */
   customSocketEvent(eventType, socket, data) {
     switch (eventType) {
       case CONNECTION:
@@ -172,10 +224,18 @@ class WsSocketServer {
     }
   }
 
+  /**
+   * Checks if there are clients in a specific room.
+   * @param {string} room - The room to check.
+   * @returns {boolean} True if there are clients in the room.
+   */
   areThereClientsInRoom(room) {
     return this.connectedClients.some((client) => client.room === room);
   }
 
+  /**
+   * Performs a health check on the server.
+   */
   healthCheck() {
     if (!this.connectedClients.length) return;
     const isTPVOnline = this.areThereClientsInRoom(TPV);
@@ -197,6 +257,9 @@ class WsSocketServer {
     }
   }
 
+  /**
+   * Periodically checks connected clients.
+   */
   checkConnectedClients() {
     setInterval(() => {
       console.log({
@@ -206,6 +269,9 @@ class WsSocketServer {
     }, 10000);
   }
 
+  /**
+   * Defines server endpoints.
+   */
   statusEndpoint() {
     this.app.get("/status", (req, res) => {
       const status = {
@@ -217,6 +283,9 @@ class WsSocketServer {
     });
   }
 
+  /**
+   * Serves the landing page.
+   */
   landig() {
     this.app.get("/", (req, res) => {
       const indexPath = path.join(__dirname, publicPath, "index.html");
@@ -226,13 +295,14 @@ class WsSocketServer {
     });
   }
 
+  /**
+   * Enables various HTTP endpoints.
+   */
   enableEndpoints() {
     this.landig();
     this.statusEndpoint();
+    // Other endpoints can be added here...
   }
-
-  // allowCorsOrigins() {
-  // }
 }
 
 export default WsSocketServer;
