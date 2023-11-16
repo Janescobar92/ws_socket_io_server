@@ -1,10 +1,10 @@
-import * as fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import express from 'express';
-import cors from 'cors';
-import { createServer } from 'https';
-import { Server } from 'socket.io';
+import * as fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import express from "express";
+import cors from "cors";
+import { createServer } from "node:https";
+import { Server } from "socket.io";
 
 import EVENTS from "./constants/events.js";
 import ROOMS from "./constants/rooms.js";
@@ -24,9 +24,10 @@ const { SECOND_SCREEN, TPV } = ROOMS;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const keyPath = path.join(__dirname, '..', 'certificates', 'key.pem');
-const certPath = path.join(__dirname, '..', 'certificates', 'cert.pem');
+const keyPath = path.join(__dirname, "..", "certificates", "key.pem");
+const certPath = path.join(__dirname, "..", "certificates", "cert.pem");
 
+const publicPath = path.join(__dirname, "..", "public");
 
 const options = {
   key: fs.readFileSync(keyPath),
@@ -38,11 +39,15 @@ class WsSocketServer {
   constructor() {
     this.port = 8080;
     this.app = express();
-    this.server = createServer(options, this.app.use(cors()));
+    this.server = createServer(
+      options,
+      this.app.use(cors(), express.static(publicPath))
+    );
     this.io = new Server(this.server, {
       cors: {
         origin: "*",
       },
+      // rejectUnauthorized: false,
     });
     this.folderPath = "./config";
     this.initFileName = "init.json";
@@ -97,10 +102,11 @@ class WsSocketServer {
     });
 
     this.readInitFile();
-    this.server.listen(this.port, () => {
+    this.server.listen(this.port, (a) => {
       console.log(`Listening on ${this.port}`);
       this.checkConnectedClients();
     });
+    this.enableEndpoints();
   }
 
   /**
@@ -199,6 +205,32 @@ class WsSocketServer {
       this.healthCheck();
     }, 10000);
   }
+
+  statusEndpoint() {
+    this.app.get("/status", (req, res) => {
+      const status = {
+        connectedClients: this.connectedClients.length,
+        isTPVOnline: this.areThereClientsInRoom(TPV),
+        isSScreenOnline: this.areThereClientsInRoom(SECOND_SCREEN),
+      };
+      res.json(status);
+    });
+  }
+
+  landig() {
+    this.app.get("/", (req, res) => {
+      const indexPath = path.join(__dirname, publicPath, "index.html");
+      const content = fs.readFileSync(indexPath, "utf8");
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(content);
+    });
+  }
+
+  enableEndpoints() {
+    this.landig();
+    this.statusEndpoint();
+  }
+
   // allowCorsOrigins() {
   // }
 }

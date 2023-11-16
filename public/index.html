@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Server Status Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="dashboard-container">
+      <header class="dashboard-header">
+        <img src="/logo.webp" alt="Company Logo" class="logo" />
+        <h1>Server Status Dashboard</h1>
+      </header>
+      <div class="dashboard-status">
+        <p id="server-status">
+          Server Status: <span class="status-indicator online-status">Online</span>
+        </p>
+        <p id="tpv-status-section">
+          TPV Status: <span id="tpv-status" class="status-indicator tpv-status">Online</span>
+        </p>
+        <p id="ssecond-status-section">
+          Assitant Screen Status:
+          <span id="ssecond-status" class="status-indicator ssecond-status">Online</span>
+        </p>
+        <p id="connected-clients">
+          Connected Clients: <span class="client-count">0</span>
+        </p>
+      </div>
+      <div class="dashboard-main">
+        <button id="refresh-status" class="status-btn">Refresh Status</button>
+      </div>
+    </div>
+    <script>
+      function checkStatusAndStyle(id, isOnline) {
+        const query = document.querySelector(`#${id}`);
+        query.textContent = isOnline ? "Online" : "Offline";
+        query.className = isOnline ? "online-status" : "offline-status";
+      }
+
+      function updateStatus() {
+        fetch("/status")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(
+                "Network response was not ok " + response.statusText
+              );
+            }
+            return response.json();
+          })
+          .then((data) => {
+            console.log({ data });
+            checkStatusAndStyle("tpv-status", data.isTPVOnline);
+            checkStatusAndStyle("ssecond-status", data.isSScreenOnline);
+            document.querySelector(".client-count").textContent =
+              data.connectedClients;
+          })
+          .catch((error) => {
+            console.error("Error fetching server status:", error);
+            document.querySelector(".status-indicator").textContent = "Offline";
+            document.querySelector(".client-count").textContent = "N/A";
+          });
+      }
+
+      document.addEventListener("DOMContentLoaded", (event) => {
+        document
+          .getElementById("refresh-status")
+          .addEventListener("click", updateStatus);
+
+        // Update status on page load
+        updateStatus();
+      });
+    </script>
+  </body>
+</html>
