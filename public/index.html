@@ -14,14 +14,20 @@
       </header>
       <div class="dashboard-status">
         <p id="server-status">
-          Server Status: <span class="status-indicator online-status">Online</span>
+          Server Status:
+          <span class="status-indicator online-status">Online</span>
         </p>
         <p id="tpv-status-section">
-          TPV Status: <span id="tpv-status" class="status-indicator tpv-status">Online</span>
+          TPV Status:
+          <span id="tpv-status" class="status-indicator tpv-status"
+            >Online</span
+          >
         </p>
         <p id="ssecond-status-section">
           Assistant Screen Status:
-          <span id="ssecond-status" class="status-indicator ssecond-status">Online</span>
+          <span id="ssecond-status" class="status-indicator ssecond-status"
+            >Online</span
+          >
         </p>
         <p id="connected-clients">
           Connected Clients: <span class="client-count">0</span>
@@ -29,6 +35,9 @@
       </div>
       <div class="dashboard-main">
         <button id="refresh-status" class="status-btn">Refresh Status</button>
+        <button id="regenerate-certificate" class="status-btn">
+          Regenerate Certificate
+        </button>
       </div>
     </div>
     <script>
@@ -62,10 +71,32 @@
           });
       }
 
+      function regenerateCertificate() {
+        fetch("/regenerate-certificate")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(
+                "Network response was not ok " + response.statusText
+              );
+            }
+            return response.json();
+          })
+          .then((data) => {
+            console.log({ data });
+          })
+          .catch((error) => {
+            console.error("Error fetching server status:", error);
+          });
+      }
+
       document.addEventListener("DOMContentLoaded", (event) => {
         document
           .getElementById("refresh-status")
           .addEventListener("click", updateStatus);
+
+        document
+          .getElementById("regenerate-certificate")
+          .addEventListener("click", regenerateCertificate);
 
         // Update status on page load
         updateStatus();

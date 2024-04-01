@@ -270,7 +270,7 @@ class WsSocketServer {
   }
 
   /**
-   * Defines server endpoints.
+   * Defines status endpoint.
    */
   statusEndpoint() {
     this.app.get("/status", (req, res) => {
@@ -280,6 +280,16 @@ class WsSocketServer {
         isSScreenOnline: this.areThereClientsInRoom(SECOND_SCREEN),
       };
       res.json(status);
+    });
+  }
+
+  /**
+   * Defines regenerate-certificate endpoint.
+   */
+  regenerateCertificateEndpoint() {
+    this.app.get("/regenerate-certificate", (req, res) => {
+      console.log("regenerate-certificate");
+      res.json("status");
     });
   }
 
@@ -301,6 +311,7 @@ class WsSocketServer {
   enableEndpoints() {
     this.landig();
     this.statusEndpoint();
+    this.regenerateCertificateEndpoint();
     // Other endpoints can be added here...
   }
 }
