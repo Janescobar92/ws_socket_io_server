@@ -12,6 +12,15 @@ import EVENTS from "./constants/events.js";
 import ROOMS from "./constants/rooms.js";
 import { SS_CONNECTED, SS_DISCONNECTED } from "./constants/message.js";
 
+import {
+  httpPort,
+  httpsPort,
+  sslOptions,
+  staticContentPath,
+} from "./config.js";
+import CertificateManager from "./certificateManager.js";
+import CertificateDownloadManager from "./certificateDownloadManager.js";
+
 // Destructuring to extract constants from the imported EVENTS and ROOMS objects.
 const {
   CONNECTION,
@@ -25,36 +34,36 @@ const {
 
 const { SECOND_SCREEN, TPV } = ROOMS;
 
-// Determine the directory name of the current module.
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Paths to SSL certificate and key files for HTTPS server.
-const keyPath = path.join(__dirname, "..", "certificates", "key.pem");
-const certPath = path.join(__dirname, "..", "certificates", "cert.pem");
-
-// Path to the public directory for serving static files.
-const publicPath = path.join(__dirname, "..", "public");
-
-// SSL options for HTTPS server setup.
-const options = {
-  key: fs.readFileSync(keyPath),
-  cert: fs.readFileSync(certPath),
-  rejectUnauthorized: false,
-};
-
+/**
+ * Represents a WebSocket server.
+ */
 class WsSocketServer {
   constructor() {
+    const { certPem, privateKeyPem } = this.generateCertificate();
+
+    const options = {
+      key: privateKeyPem,
+      cert: certPem,
+      rejectUnauthorized: false,
+    };
+
+    console.log({ options });
+
     // Ports for HTTP and HTTPS servers.
-    this.httpPort = 3001;
-    this.httpsPort = 3002;
+    this.httpPort = httpPort;
+    this.httpsPort = httpsPort;
 
     // Express application setup with CORS and static file middleware.
     this.app = express();
-    this.app.use(cors(), express.static(publicPath));
+    this.app.use(cors(), express.static(staticContentPath));
 
     // Creating HTTP and HTTPS servers.
     this.httpServer = createHttpServer(this.app);
     this.httpsServer = createHttpsServer(options, this.app);
+
+    // Certificate and key.
+    this.certPem = certPem;
+    this.privateKeyPem = privateKeyPem;
 
     // Socket.IO setup with CORS configuration.
     this.io = new Server({
@@ -107,15 +116,19 @@ class WsSocketServer {
 
     // Start listening on HTTP and HTTPS ports.
     this.httpServer.listen(this.httpPort, () => {
-      console.log(`HTTP Server listening on http://localhost:${this.httpPort}`);
+      this.serverLog(
+        `HTTP Server listening on http://localhost:${this.httpPort}`,
+        true
+      );
       this.checkConnectedClients();
     });
 
     this.httpsServer.listen(this.httpsPort, () => {
-      console.log(
+      this.serverLog(
         `HTTPS Server listening on https://${this.getNetworkIP()}:${
           this.httpsPort
-        }`
+        }`,
+        true
       );
       this.checkConnectedClients();
     });
@@ -130,9 +143,9 @@ class WsSocketServer {
    * @param {boolean} restart - Flag to restart the server after shutdown.
    */
   async shutdown(socket, restart = false) {
-    console.log("Shutting down server...");
+    this.serverLog("Shutting down server...", true);
     this.httpServer.close(() => {
-      console.log("WsSocketServer successfully shut down");
+      this.serverLog("WsSocketServer successfully shut down", true);
       if (restart) {
         this.start();
       } else {
@@ -140,7 +153,7 @@ class WsSocketServer {
       }
     });
     this.httpsServer.close(() => {
-      console.log("WsSocketServer successfully shut down");
+      this.serverLog("WsSocketServer successfully shut down", true);
       if (restart) {
         this.start();
       } else {
@@ -162,7 +175,7 @@ class WsSocketServer {
    * Logs when a client connects.
    */
   clientConnected() {
-    console.log("A client has connected");
+    this.serverLog("A client has connected", true);
   }
 
   /**
@@ -170,7 +183,7 @@ class WsSocketServer {
    * @param {Socket} socket - The socket instance of the disconnected client.
    */
   clientDisconnected(socket) {
-    console.log("A client has been disconnected");
+    this.serverLog("A client has been disconnected", true);
     this.connectedClients = this.connectedClients.filter(
       (s) => s.socket_id !== socket.id
     );
@@ -183,7 +196,7 @@ class WsSocketServer {
    */
   register(socket, room) {
     socket.join(room);
-    console.log(`Client registered in room ${room}`);
+    this.serverLog(`Client registered in room ${room}`, true);
     this.connectedClients.push({ socket_id: socket.id, room });
   }
 
@@ -195,7 +208,7 @@ class WsSocketServer {
   emitRoomEvent(socket, data) {
     const payload = JSON.parse(data);
     const { room, roomEvent } = payload;
-    console.log({ room, roomEvent, data });
+    this.serverLog({ room, roomEvent, data }, true);
     socket.to(room).emit(roomEvent, data);
   }
 
@@ -262,9 +275,12 @@ class WsSocketServer {
    */
   checkConnectedClients() {
     setInterval(() => {
-      console.log({
-        connectedClients: this.connectedClients,
-      });
+      this.serverLog(
+        {
+          connectedClients: this.connectedClients,
+        },
+        true
+      );
       this.healthCheck();
     }, 10000);
   }
@@ -287,9 +303,29 @@ class WsSocketServer {
    * Defines regenerate-certificate endpoint.
    */
   regenerateCertificateEndpoint() {
-    this.app.get("/regenerate-certificate", (req, res) => {
-      console.log("regenerate-certificate");
-      res.json("status");
+    this.app.get("/regenerate-certificate", async (req, res) => {
+      const { certPem, privateKeyPem } = this.generateCertificate(true);
+      this.certPem = certPem;
+      this.privateKeyPem = privateKeyPem;
+      console.log({ certPem, privateKeyPem });
+      return res.json({ message: "New certificate generated and applied." });
+    });
+  }
+
+  /**
+   * Defines download-certificate endpoint.
+   */
+  downloadCertificates() {
+    this.app.get("/download-certificate", async (req, res) => {
+      try {
+        CertificateDownloadManager.donwload(
+          this.certPem,
+          this.privateKeyPem,
+          res
+        );
+      } catch (error) {
+        this.serverLog(error);
+      }
     });
   }
 
@@ -312,7 +348,44 @@ class WsSocketServer {
     this.landig();
     this.statusEndpoint();
     this.regenerateCertificateEndpoint();
+    this.downloadCertificates();
     // Other endpoints can be added here...
+  }
+
+  /**
+   * Generates a self-signed certificate.
+   * @param {boolean} updateServer
+   * @returns
+   */
+  generateCertificate(updateServer = false) {
+    const { certPem, privateKeyPem } =
+      CertificateManager.generateSelfSignedCertificates(this.getNetworkIP());
+
+    // Update the HTTPS server with the new certificates.
+    if (updateServer) {
+      this.httpsServer.setSecureContext({
+        key: privateKeyPem,
+        cert: certPem,
+      });
+      this.serverLog(
+        "New self-signed certificate generated and applied.",
+        true
+      );
+    }
+
+    return { certPem, privateKeyPem };
+  }
+
+  /**
+   * Logs messages to the server console and optionally sends them to the client.
+   * @param {*} logMessage
+   * @param {boolean} sendToClient
+   */
+  serverLog(logMessage, sendToClient = false) {
+    console.log(logMessage);
+    // Logs to controller screen.
+    if (sendToClient)
+      this.io.emit("serverLog", JSON.stringify(logMessage).replace(/"/g, ""));
   }
 }
 

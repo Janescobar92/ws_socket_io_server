@@ -13,33 +13,42 @@
         <h1>Server Status Dashboard</h1>
       </header>
       <div class="dashboard-status">
-        <p id="server-status">
-          Server Status:
-          <span class="status-indicator online-status">Online</span>
-        </p>
-        <p id="tpv-status-section">
-          TPV Status:
-          <span id="tpv-status" class="status-indicator tpv-status"
-            >Online</span
-          >
-        </p>
-        <p id="ssecond-status-section">
-          Assistant Screen Status:
-          <span id="ssecond-status" class="status-indicator ssecond-status"
-            >Online</span
-          >
-        </p>
-        <p id="connected-clients">
-          Connected Clients: <span class="client-count">0</span>
-        </p>
+        <div class="logs-container" id="logs-container">
+          <div id="log-messages" class="log-messages"></div>
+        </div>
+        <div class="status-table">
+          <p id="server-status">
+            Server Status:
+            <span class="status-indicator online-status">Online</span>
+          </p>
+          <p id="tpv-status-section">
+            TPV Status:
+            <span id="tpv-status" class="status-indicator tpv-status"
+              >Online</span
+            >
+          </p>
+          <p id="connected-clients">
+            Connected Clients: <span class="client-count">0</span>
+          </p>
+          <p id="ssecond-status-section">
+            Assistant Screen Status:
+            <span id="ssecond-status" class="status-indicator ssecond-status"
+              >Online</span
+            >
+          </p>
+        </div>
       </div>
       <div class="dashboard-main">
         <button id="refresh-status" class="status-btn">Refresh Status</button>
         <button id="regenerate-certificate" class="status-btn">
           Regenerate Certificate
         </button>
+        <button id="download-certificate" class="status-btn">
+          Donwload Certificate
+        </button>
       </div>
     </div>
+    <script src="/socket.io/socket.io.js"></script>
     <script>
       function checkStatusAndStyle(id, isOnline) {
         const query = document.querySelector(`#${id}`);
@@ -73,20 +82,40 @@
 
       function regenerateCertificate() {
         fetch("/regenerate-certificate")
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error(
-                "Network response was not ok " + response.statusText
-              );
-            }
-            return response.json();
+          .then((response) => console.log({ response }))
+          .catch((error) =>
+            console.error("Error regenerating the certificates:", error)
+          );
+      }
+
+      function downloadCertificate() {
+        fetch("/download-certificate")
+          .then((response) => response.blob())
+          .then((blob) => {
+            // Creates a link and downloads the ZIP file
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "certificates.zip";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
           })
-          .then((data) => {
-            console.log({ data });
-          })
-          .catch((error) => {
-            console.error("Error fetching server status:", error);
-          });
+          .catch((error) =>
+            console.error("Error downloading the certificates:", error)
+          );
+      }
+
+      function addLogMessage(message) {
+        const logContainer = document.getElementById("log-messages");
+        const newLogEntry = document.createElement("div");
+        newLogEntry.textContent = message;
+
+        logContainer.appendChild(newLogEntry);
+
+        logContainer.scrollTop = logContainer.scrollHeight;
+        updateStatus();
       }
 
       document.addEventListener("DOMContentLoaded", (event) => {
@@ -97,6 +126,13 @@
         document
           .getElementById("regenerate-certificate")
           .addEventListener("click", regenerateCertificate);
+
+        document
+          .getElementById("download-certificate")
+          .addEventListener("click", downloadCertificate);
+
+        const socket = io();
+        socket.on("serverLog", addLogMessage);
 
         // Update status on page load
         updateStatus();
